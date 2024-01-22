@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Map</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+
+      .tagDiv {
+        position: absolute;
+        padding: 6px 20px;
+        background-color: rgba(255, 255, 255, 0.1);
+        color: #fff;
+        border-radius: 5px;
+        visibility: hidden;
+      }
+    </style>
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r123/three.min.js" integrity="sha512-Q+IG0h7As6sfqE2t1Xf5IeamNyCXb4EXxGCA9Mlbpv7xtwurVHNdVDbyWeSQ3ulPf2FRlqeu77Ec3SJDdIR63w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="http://www.yanhuangxueyuan.com/versions/threejsR92/examples/js/controls/OrbitControls.js"></script>
+    <script src="http://www.yanhuangxueyuan.com/versions/threejsR92/examples/js/lines/LineSegmentsGeometry.js"></script>
+    <script src="http://www.yanhuangxueyuan.com/versions/threejsR92/examples/js/lines/LineGeometry.js"></script>
+    <script src="http://www.yanhuangxueyuan.com/versions/threejsR92/examples/js/lines/LineMaterial.js"></script>
+    <script src="http://www.yanhuangxueyuan.com/versions/threejsR92/examples/js/lines/LineSegments2.js"></script>
+    <script src="http://www.yanhuangxueyuan.com/versions/threejsR92/examples/js/lines/Line2.js"></script>
+  </head>
+
+  <body>
+    <div class="tagDiv" id="tag">
+      <div id="name" style="color: #ffffff">省份：河南</div>
+      <div id="title" style="margin-top: 10px; color: #ffffff">数量：10</div>
+    </div>
+    <script src="./frame.js"></script>
+    <script src="./flydata.js"></script>
+    <script src="./fly.js"></script>
+    <script src="./GeoJSON.js"></script>
+    <script>
+      var flyGroup = new THREE.Group();
+      var cityGroup = new THREE.Group();
+      var cityPointArr = [];
+      var _s = 1.5;
+      var startMesh = null;
+      var ENdata = data(); 
+      updateFly("河南"); 
+      function updateFly(provinceName) {
+        var start = null;
+
+        var endArr = []; 
+
+        ENdata.forEach((coord, i) => {
+          if (coord.name == provinceName) {
+            start = new THREE.Vector3(coord.E, coord.N, 0);
+          } else {
+            endArr.push(coord);
+          }
+        });
+        currentCityAllFlys(start, endArr);
+      }
+
+      var loader = new THREE.FileLoader();
+      loader.setResponseType("json");
+      loader.load("./GeoJSON/china.json", function (data) {
+        var mapGroup = GeoJSON(data);
+        scene.add(mapGroup);
+        mapGroup.rotateX(-Math.PI / 2);
+        var maxL = centerCamera(mapGroup, camera);
+        flyGroup.position.z = maxL * 0.01 * 1.01;
+        mapGroup.add(flyGroup);
+        cityGroup.position.z = maxL * 0.01 * 1.01; 
+        mapGroup.add(cityGroup);
+      });
+
+      function render() {
+        cityPointArr.forEach((cirMesh, i) => {
+          if (cirMesh.s <= 1) {
+            cirMesh.s += 0.01;
+            cirMesh.scale.set(cirMesh.s, cirMesh.s, cirMesh.s);
+            cirMesh.material.opacity = (cirMesh.s - 0.7) * 3.3;
+          } else if (cirMesh.s > 1 && cirMesh.s <= _s + 1) {
+            cirMesh.s += 0.01;
+            cirMesh.scale.set(cirMesh.s, cirMesh.s, cirMesh.s);
+            cirMesh.material.opacity = 1 - (cirMesh.s - 1) / _s;
+          } else {
+            cirMesh.s = 0.7;
+          }
+        });
+
+        // console.log(startMesh);
+        startMesh.rotateZ(0.02);
+        flyGroup.children.forEach((flyTrack, i) => {
+          var points = flyTrack.flyTrackPoints;
+          var flyline = flyTrack.children[0];
+          var indexMax = points.length - flyline.num; 
+          if (flyline.index < indexMax) {
+            flyline.index += 1;
+          } else {
+            flyline.index = 0;
+          }
+          updateFlyGeo(flyline, flyline.index, points); 
+        });
+
+        renderer.render(scene, camera);
+        requestAnimationFrame(render); 
+      }
+      render();
+
+      function choose(event) {
+        var Sx = event.clientX; 
+        var Sy = event.clientY; 
+        var x = (Sx / window.innerWidth) * 2 - 1;
+        var y = -(Sy / window.innerHeight) * 2 + 1; 
+        var raycaster = new THREE.Raycaster(); 
+        raycaster.setFromCamera(new THREE.Vector2(x, y), camera);
+        var intersects = raycaster.intersectObjects(meshArr);
+        return intersects;
+      }
+      addEventListener("click", function () {
+        var intersects = choose(event);
+        if (intersects.length > 0) {
+          if (chooseMesh) chooseMesh.material.color.set(0x004444);
+          intersects[0].object.material.color.set(0x006666);
+          chooseMesh = intersects[0].object;
+          updateFly(chooseMesh.name); 
+        }
+      }); 
+      var div = document.getElementById("tag");
+      var nameDiv = document.getElementById("name");
+      var titleDiv = document.getElementById("title");
+      addEventListener("mousemove", function () {
+        var intersects = choose(event); 
+        if (intersects.length > 0) {
+          var moveChooseMesh = intersects[0].object;
+          nameDiv.innerText = "省份：" + moveChooseMesh.name;
+          titleDiv.innerText = "数量：" + Math.floor(Math.random() * 100);
+          div.style.visibility = "visible";
+          var worldVector = null;
+          ENdata.forEach((coord, i) => {
+            if (coord.name == moveChooseMesh.name) {
+              worldVector = new THREE.Vector3(coord.E, coord.N, 0);
+              worldVector.applyMatrix4(moveChooseMesh.matrixWorld);
+            }
+          });
+          var standardVector = worldVector.project(camera);
+          var a = window.innerWidth / 2;
+          var b = window.innerHeight / 2;
+          var x = Math.round(standardVector.x * a + a); 
+          var y = Math.round(-standardVector.y * b + b); 
+
+          div.style.left = x + "px";
+          div.style.top = y + "px";
+        } else {
+          div.style.visibility = "hidden";
+        }
+      });
+    </script>
+  </body>
+</html>
